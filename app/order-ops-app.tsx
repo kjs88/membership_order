@@ -137,7 +137,7 @@ const appSections: {
   { id: "runs", label: "실행 기록", description: "자동화 실행 로그", icon: <History className="h-4 w-4" /> },
   { id: "reports", label: "리포트", description: "성과와 다운로드", icon: <Database className="h-4 w-4" /> },
   { id: "membership", label: "회원/로그인", description: "가입과 권한", icon: <UserRound className="h-4 w-4" /> },
-  { id: "settings", label: "설정", description: "승인과 권한", icon: <Settings className="h-4 w-4" /> },
+  { id: "settings", label: "관리자 설정", description: "승인과 기준값", icon: <Settings className="h-4 w-4" /> },
 ];
 
 function normalizeHeader(value: string) {
@@ -365,6 +365,29 @@ const authRoadmap = [
   { title: "2단계", text: "초대 기반 회원가입, 이메일 인증, 관리자 승인 대기 화면을 붙입니다." },
   { title: "3단계", text: "주문 실행, 리포트 다운로드, 채널 설정 같은 위험 작업을 역할별로 차단합니다." },
   { title: "4단계", text: "로그인 실패, 세션 만료, 권한 변경, 주문 승인 이력을 감사 로그로 남깁니다." },
+];
+
+const pendingMembers = [
+  { name: "김민지", email: "minji@example.com", request: "주문 운영자", status: "승인 대기" },
+  { name: "박준호", email: "junho@example.com", request: "조회 전용", status: "추가 확인" },
+  { name: "ERP 담당", email: "erp@example.com", request: "승인 담당자", status: "승인 대기" },
+];
+
+const adminCards = [
+  { title: "회원 승인", text: "신규 가입, 초대 요청, 휴면 해제 요청을 승인하거나 반려합니다." },
+  { title: "권한 변경", text: "업로드, 보류 수정, 실행 승인, 리포트 다운로드 권한을 역할별로 관리합니다." },
+  { title: "채널 설정", text: "B2B몰과 ERP의 로그인 방식, 주문 단계, 승인 전 멈춤 지점을 정합니다." },
+  { title: "상품 매핑", text: "원본 상품명, 표준 상품명, ERP 품목코드, 가격 허용 범위를 관리합니다." },
+  { title: "승인 정책", text: "주문 확정, 결제, ERP 전표 등록처럼 외부 변경이 생기는 작업의 승인 단계를 관리합니다." },
+  { title: "감사 로그", text: "누가 설정을 바꿨는지, 누가 주문을 처리했는지 장부처럼 남깁니다." },
+];
+
+const approvalPolicies = [
+  { step: "CSV/엑셀 업로드", owner: "주문 운영자", approval: "불필요", log: "접수자 기록" },
+  { step: "보류 사유 수정", owner: "주문 운영자", approval: "불필요", log: "수정자 기록" },
+  { step: "B2B몰 장바구니 입력", owner: "승인 담당자", approval: "필요", log: "승인자 기록" },
+  { step: "주문 확정/결제", owner: "최고 관리자", approval: "필수", log: "승인자와 처리자 기록" },
+  { step: "ERP 전표 등록", owner: "승인 담당자", approval: "필수", log: "전표번호와 처리자 기록" },
 ];
 
 function toDateKey(value: Date | string) {
@@ -1361,13 +1384,105 @@ function SettingsPage() {
     <section className="rounded-lg border border-slate-200 bg-white">
       <SectionHeader
         icon={<Settings className="h-5 w-5" />}
-        title="설정"
-        text="주문 제출 승인 정책, 채널별 위험 단계, 시스템 기준값을 관리합니다."
+        title="관리자 설정"
+        text="운영자가 회원, 권한, 채널, 상품 매핑, 승인 정책을 관리하는 영역입니다."
       />
-      <div className="grid gap-4 p-4 lg:grid-cols-3">
-        <PolicyCard title="승인 정책" text="장바구니 추가, 주문 확정, 결제, ERP 전표 등록은 각각 다른 승인 단계를 둘 수 있습니다." />
-        <PolicyCard title="알림 기준" text="가격 차이, 품절, 주소 오류, 로그인 만료, 중복 주문 감지 시 보류 큐로 보냅니다." />
-        <PolicyCard title="기준 데이터" text="채널별 상품코드, 거래처 별칭, 가격 허용 범위, 배송 메모 규칙을 관리합니다." />
+      <div className="space-y-4 p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {adminCards.map((card) => (
+            <PolicyCard key={card.title} title={card.title} text={card.text} />
+          ))}
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 p-4">
+                <h3 className="font-semibold">회원 승인 대기</h3>
+                <p className="mt-1 text-sm text-slate-600">가입 요청자는 관리자가 역할을 지정해야 주문 화면에 접근합니다.</p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>이름</TableHead>
+                    <TableHead>이메일</TableHead>
+                    <TableHead>요청 역할</TableHead>
+                    <TableHead>상태</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingMembers.map((member) => (
+                    <TableRow key={member.email}>
+                      <TableCell className="font-medium">{member.name}</TableCell>
+                      <TableCell>{member.email}</TableCell>
+                      <TableCell>{member.request}</TableCell>
+                      <TableCell>
+                        <Badge className={member.status === "승인 대기" ? statusClass("HOLD") : statusClass("FAILED")}>
+                          {member.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 p-4">
+                <h3 className="font-semibold">승인 정책</h3>
+                <p className="mt-1 text-sm text-slate-600">외부 사이트나 ERP에 실제 변경이 생기는 작업은 승인 단계를 둡니다.</p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>작업</TableHead>
+                    <TableHead>담당 권한</TableHead>
+                    <TableHead>승인</TableHead>
+                    <TableHead>기록</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {approvalPolicies.map((policy) => (
+                    <TableRow key={policy.step}>
+                      <TableCell className="font-medium">{policy.step}</TableCell>
+                      <TableCell>{policy.owner}</TableCell>
+                      <TableCell>
+                        <Badge className={policy.approval === "불필요" ? statusClass("READY") : statusClass("HOLD")}>
+                          {policy.approval}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-normal">{policy.log}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <SideNote
+              title="관리자만 바꾸는 값"
+              items={["회원 승인과 차단", "역할별 권한", "채널 로그인 정책", "상품·거래처 매핑 기준", "가격 차이 허용 범위", "주문 제출 승인 단계"]}
+            />
+            <div className="rounded-lg border border-slate-200 bg-[#fff8e6] p-4">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-amber-700" />
+                <h3 className="font-semibold">운영 원칙</h3>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-700">
+                관리자가 설정을 바꾸면 설정 변경자와 시간이 기록되어야 합니다. 주문 작업 로그와 같은 기준으로 남겨야 나중에 문제가 생겨도 추적할 수 있습니다.
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <h3 className="font-semibold">다음 구현</h3>
+              <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <p className="rounded-md border border-slate-200 bg-slate-50 p-3">회원 승인 버튼과 역할 변경 저장</p>
+                <p className="rounded-md border border-slate-200 bg-slate-50 p-3">채널별 로그인 정보 보관 방식 결정</p>
+                <p className="rounded-md border border-slate-200 bg-slate-50 p-3">상품 매핑 DB와 변경 이력 연결</p>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </section>
   );

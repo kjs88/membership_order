@@ -3,18 +3,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  BarChart3,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Database,
   Download,
+  FileWarning,
   FileSpreadsheet,
+  History,
   ListChecks,
   Loader2,
+  Map,
   PauseCircle,
   PlayCircle,
   RefreshCw,
+  Settings,
   Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type OrderRow = {
   lineNo: number;
+  sourceSystem: string;
   orderId: string;
   category: string;
   productName: string;
@@ -50,6 +58,7 @@ type OrderRow = {
 type Job = {
   id: number;
   filename: string;
+  sourceSystem: string;
   status: string;
   totalRows: number;
   readyRows: number;
@@ -67,6 +76,17 @@ type CalendarDay = {
   jobs: Job[];
 };
 
+type PageMode =
+  | "overview"
+  | "orders"
+  | "calendar"
+  | "channels"
+  | "mapping"
+  | "exceptions"
+  | "runs"
+  | "reports"
+  | "settings";
+
 const requiredColumns = [
   "order_id",
   "category",
@@ -79,8 +99,25 @@ const requiredColumns = [
 ];
 
 const sampleCsv =
-  "order_id,category,product_name,quantity,expected_price,customer_name,recipient_name,recipient_phone,zipcode,address,address_detail,memo\n" +
-  "TEST-001,급여판매,Handy,1,108000,우리케어,홍길동,010-0000-0000,12345,서울시 금천구 서부샛길 606,101호,샘플";
+  "source_system,order_id,category,product_name,quantity,expected_price,customer_name,recipient_name,recipient_phone,zipcode,address,address_detail,memo\n" +
+  "이로움,TEST-001,급여판매,Handy,1,108000,우리케어,홍길동,010-0000-0000,12345,서울시 금천구 서부샛길 606,101호,샘플";
+
+const appSections: {
+  id: PageMode;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+}[] = [
+  { id: "overview", label: "통합 현황", description: "전체 주문 흐름", icon: <BarChart3 className="h-4 w-4" /> },
+  { id: "orders", label: "주문 접수", description: "파일 업로드와 검증", icon: <ListChecks className="h-4 w-4" /> },
+  { id: "calendar", label: "전체 일정", description: "일정과 기록", icon: <CalendarDays className="h-4 w-4" /> },
+  { id: "channels", label: "채널/ERP", description: "사이트와 ERP 연결", icon: <Building2 className="h-4 w-4" /> },
+  { id: "mapping", label: "상품 매핑", description: "상품명과 코드 정리", icon: <Map className="h-4 w-4" /> },
+  { id: "exceptions", label: "예외 처리", description: "실패와 보류 큐", icon: <FileWarning className="h-4 w-4" /> },
+  { id: "runs", label: "실행 기록", description: "자동화 실행 로그", icon: <History className="h-4 w-4" /> },
+  { id: "reports", label: "리포트", description: "성과와 다운로드", icon: <Database className="h-4 w-4" /> },
+  { id: "settings", label: "설정", description: "승인과 권한", icon: <Settings className="h-4 w-4" /> },
+];
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_");
@@ -172,6 +209,7 @@ function validateOrder(raw: Record<string, unknown>, index: number): OrderRow {
 
   return {
     lineNo: index + 2,
+    sourceSystem: cell(raw, "source_system") || cell(raw, "site") || cell(raw, "erp") || "미지정",
     orderId: cell(raw, "order_id"),
     category,
     productName: cell(raw, "product_name"),
@@ -207,6 +245,7 @@ function statusClass(status: string) {
 function downloadCsv(rows: OrderRow[], filename: string) {
   const headers = [
     "line_no",
+    "source_system",
     "order_id",
     "status",
     "reason",
@@ -225,6 +264,7 @@ function downloadCsv(rows: OrderRow[], filename: string) {
   const body = rows.map((row) =>
     [
       row.lineNo,
+      row.sourceSystem,
       row.orderId,
       row.status,
       row.reason,
@@ -264,6 +304,30 @@ function downloadSample() {
   URL.revokeObjectURL(url);
 }
 
+const channelPlans = [
+  { name: "이로움", type: "B2B몰", status: "연결 준비", rule: "급여/비급여 상품 검색, 장바구니 전 승인" },
+  { name: "케어맥스", type: "B2B몰", status: "대기", rule: "상품코드 우선 매칭, 품절 시 보류" },
+  { name: "Amaranth ERP", type: "ERP", status: "대기", rule: "거래처/품목/창고 코드 검증 후 전표 생성" },
+  { name: "수기 발주", type: "내부", status: "운영", rule: "CSV 업로드 후 담당자 승인" },
+];
+
+const mappingExamples = [
+  { source: "Handy", canonical: "성인용보행기 Handy", code: "M06091147601", status: "확정" },
+  { source: "APT-106", canonical: "목욕의자 APT-106", code: "미등록", status: "확인 필요" },
+  { source: "안심버선", canonical: "미끄럼방지양말 안심버선", code: "M0303", status: "후보 2개" },
+];
+
+const runSteps = [
+  "파일 접수",
+  "필수값 검증",
+  "상품/거래처 매핑",
+  "사이트별 재고·가격 확인",
+  "장바구니 또는 ERP 입력",
+  "사용자 승인",
+  "주문번호/전표번호 수집",
+  "리포트 발행",
+];
+
 function toDateKey(value: Date | string) {
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return "";
@@ -299,6 +363,86 @@ function buildCalendarDays(monthDate: Date, jobs: Job[]) {
   });
 }
 
+function OverviewPage({ jobs, onGo }: { jobs: Job[]; onGo: (mode: PageMode) => void }) {
+  const queued = jobs.filter((job) => job.status === "QUEUED").length;
+  const failed = jobs.filter((job) => job.status === "FAILED").length;
+  const ready = jobs.filter((job) => job.status === "READY").length;
+  const channels = new Set(jobs.map((job) => job.sourceSystem || "미지정")).size;
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">주문 운영 허브</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              사이트별 주문과 ERP 입력을 같은 흐름으로 접수, 검증, 실행, 기록합니다.
+            </p>
+          </div>
+          <Button onClick={() => onGo("orders")}>
+            <Upload className="h-4 w-4" />
+            새 주문 접수
+          </Button>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <OverviewCard label="연결 채널" value={channels || channelPlans.length} />
+          <OverviewCard label="검증 완료 작업" value={ready} />
+          <OverviewCard label="실행 대기" value={queued} />
+          <OverviewCard label="실패 포함" value={failed} />
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          <FlowCard title="접수" text="CSV·엑셀·ERP 내보내기 파일을 같은 주문 스키마로 정규화합니다." />
+          <FlowCard title="검증" text="거래처, 상품, 수량, 주소, 예상가, 채널별 필수값을 먼저 확인합니다." />
+          <FlowCard title="실행" text="사이트 자동입력 또는 ERP 전표 생성은 승인 전 대기 상태로 분리합니다." />
+          <FlowCard title="기록" text="주문번호, 전표번호, 실패 사유, 보류 사유를 작업별로 남깁니다." />
+        </div>
+      </div>
+
+      <aside className="space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="font-semibold">필요 화면</h3>
+          <div className="mt-3 space-y-2">
+            {appSections.slice(1).map((section) => (
+              <button
+                key={section.id}
+                className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left hover:border-[#0f766e] hover:bg-teal-50"
+                onClick={() => onGo(section.id)}
+              >
+                <span>
+                  <span className="block text-sm font-medium">{section.label}</span>
+                  <span className="text-xs text-slate-500">{section.description}</span>
+                </span>
+                {section.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-[#fff8e6] p-4 text-sm leading-6 text-slate-700">
+          실제 주문 확정, 결제, 전표 등록처럼 외부 상태가 바뀌는 단계는 항상 승인 정책을 거쳐야 합니다.
+        </div>
+      </aside>
+    </section>
+  );
+}
+
+function OverviewCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <span className="text-sm text-slate-600">{label}</span>
+      <strong className="mt-2 block text-2xl">{value.toLocaleString()}</strong>
+    </div>
+  );
+}
+
+function FlowCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
+    </div>
+  );
+}
+
 export default function OrderOpsApp() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -309,7 +453,7 @@ export default function OrderOpsApp() {
   const [loading, setLoading] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
-  const [viewMode, setViewMode] = useState<"orders" | "calendar">("orders");
+  const [viewMode, setViewMode] = useState<PageMode>("overview");
 
   const rows = activeJob?.rows ?? previewRows;
   const orderSummary = useMemo(
@@ -330,7 +474,7 @@ export default function OrderOpsApp() {
     }),
     [jobs],
   );
-  const summary = viewMode === "calendar" ? globalSummary : orderSummary;
+  const summary = viewMode === "orders" ? orderSummary : globalSummary;
 
   async function openJob(id: number) {
     const response = await fetch(`/api/jobs/${id}`);
@@ -432,8 +576,8 @@ export default function OrderOpsApp() {
               <ClipboardList className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">이로움 주문 운영</h1>
-              <p className="text-sm text-slate-600">주문 파일 검증, 승인 대기, 처리 리포트를 한 곳에서 관리합니다.</p>
+              <h1 className="text-2xl font-semibold tracking-tight">Membership 주문 운영</h1>
+              <p className="text-sm text-slate-600">B2B몰, ERP, 수기 주문을 한 곳에서 접수하고 검증합니다.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -466,24 +610,29 @@ export default function OrderOpsApp() {
           <MetricCard icon={<AlertCircle />} label="실패" value={summary.failed} tone="failed" />
         </section>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
-          <Button
-            variant={viewMode === "orders" ? "default" : "ghost"}
-            onClick={() => setViewMode("orders")}
-          >
-            <ListChecks className="h-4 w-4" />
-            주문 작업판
-          </Button>
-          <Button
-            variant={viewMode === "calendar" ? "default" : "ghost"}
-            onClick={() => setViewMode("calendar")}
-          >
-            <CalendarDays className="h-4 w-4" />
-            전체 캘린더
-          </Button>
-        </div>
+        <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-9">
+          {appSections.map((section) => (
+            <button
+              key={section.id}
+              className={`rounded-md border px-3 py-3 text-left transition ${
+                viewMode === section.id
+                  ? "border-[#0f766e] bg-teal-50 text-[#0f4f49]"
+                  : "border-transparent hover:border-slate-200 hover:bg-slate-50"
+              }`}
+              onClick={() => setViewMode(section.id)}
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                {section.icon}
+                {section.label}
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">{section.description}</span>
+            </button>
+          ))}
+        </nav>
 
-        {viewMode === "calendar" ? (
+        {viewMode === "overview" ? (
+          <OverviewPage jobs={jobs} onGo={setViewMode} />
+        ) : viewMode === "calendar" ? (
           <OperationsCalendar
             jobs={jobs}
             monthDate={calendarMonth}
@@ -495,7 +644,7 @@ export default function OrderOpsApp() {
               void openJob(id);
             }}
           />
-        ) : (
+        ) : viewMode === "orders" ? (
           <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
             <aside className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-200 p-4">
@@ -523,7 +672,7 @@ export default function OrderOpsApp() {
                       <Badge className={statusClass(job.status)}>{statusLabel(job.status)}</Badge>
                     </div>
                     <div className="mt-2 text-xs text-slate-500">
-                      {job.totalRows}건 · 완료 {job.readyRows} · 실패 {job.failedRows}
+                      {job.sourceSystem || "미지정"} · {job.totalRows}건 · 완료 {job.readyRows} · 실패 {job.failedRows}
                     </div>
                   </button>
                 ))
@@ -585,6 +734,24 @@ export default function OrderOpsApp() {
             </Tabs>
             </section>
           </section>
+        ) : viewMode === "channels" ? (
+          <ChannelsPage />
+        ) : viewMode === "mapping" ? (
+          <MappingPage />
+        ) : viewMode === "exceptions" ? (
+          <ExceptionsPage
+            jobs={jobs}
+            onOpenJob={(id) => {
+              setViewMode("orders");
+              void openJob(id);
+            }}
+          />
+        ) : viewMode === "runs" ? (
+          <RunsPage />
+        ) : viewMode === "reports" ? (
+          <ReportsPage jobs={jobs} />
+        ) : (
+          <SettingsPage />
         )}
       </div>
     </main>
@@ -778,7 +945,7 @@ function CalendarRecord({
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{job.filename}</span>
           <span className="mt-1 block text-xs text-slate-500">
-            {time} · {job.totalRows}건
+            {time} · {job.sourceSystem || "미지정"} · {job.totalRows}건
             {!compact ? ` · 완료 ${job.readyRows} · 실패 ${job.failedRows}` : ""}
           </span>
         </span>
@@ -797,6 +964,230 @@ function CalendarStat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ChannelsPage() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<Building2 className="h-5 w-5" />}
+        title="채널/ERP 관리"
+        text="주문을 받을 사이트와 ERP를 등록하고, 채널별 실행 정책을 관리합니다."
+      />
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="overflow-hidden rounded-md border border-slate-200">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>채널</TableHead>
+                <TableHead>유형</TableHead>
+                <TableHead>상태</TableHead>
+                <TableHead>처리 규칙</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {channelPlans.map((channel) => (
+                <TableRow key={channel.name}>
+                  <TableCell className="font-medium">{channel.name}</TableCell>
+                  <TableCell>{channel.type}</TableCell>
+                  <TableCell><Badge className="border-slate-200 bg-slate-50 text-slate-700">{channel.status}</Badge></TableCell>
+                  <TableCell className="whitespace-normal">{channel.rule}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <SideNote
+          title="채널별로 필요한 설정"
+          items={["로그인 방식", "상품 검색 기준", "장바구니/전표 입력 위치", "승인 후 제출 방식", "주문번호 수집 위치"]}
+        />
+      </div>
+    </section>
+  );
+}
+
+function MappingPage() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<Map className="h-5 w-5" />}
+        title="상품·거래처 매핑"
+        text="사이트마다 다른 상품명, ERP 품목코드, 거래처명을 내부 기준으로 맞춥니다."
+      />
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="overflow-hidden rounded-md border border-slate-200">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>원본명</TableHead>
+                <TableHead>표준 상품</TableHead>
+                <TableHead>코드</TableHead>
+                <TableHead>상태</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {mappingExamples.map((item) => (
+                <TableRow key={item.source}>
+                  <TableCell className="font-medium">{item.source}</TableCell>
+                  <TableCell>{item.canonical}</TableCell>
+                  <TableCell>{item.code}</TableCell>
+                  <TableCell>
+                    <Badge className={item.status === "확정" ? statusClass("READY") : statusClass("HOLD")}>
+                      {item.status}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <SideNote
+          title="매핑 큐"
+          items={["상품명 후보 자동 추천", "ERP 품목코드 연결", "거래처 별칭 등록", "가격 차이 허용 범위", "수동 확정 이력"]}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ExceptionsPage({ jobs, onOpenJob }: { jobs: Job[]; onOpenJob: (id: number) => void }) {
+  const exceptions = jobs.filter((job) => job.status === "FAILED" || job.status === "HOLD" || job.failedRows > 0 || job.holdRows > 0);
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<FileWarning className="h-5 w-5" />}
+        title="예외 처리"
+        text="상품 매칭 불가, 가격 차이, 주소 오류, 로그인 만료 같은 문제를 모아 봅니다."
+      />
+      <div className="p-4">
+        {exceptions.length ? (
+          <div className="grid gap-2">
+            {exceptions.map((job) => (
+              <button
+                key={job.id}
+                className="rounded-md border border-slate-200 bg-slate-50 p-3 text-left hover:border-[#0f766e] hover:bg-teal-50"
+                onClick={() => onOpenJob(job.id)}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{job.filename}</span>
+                  <Badge className={statusClass(job.status)}>{statusLabel(job.status)}</Badge>
+                </div>
+                <div className="mt-1 text-sm text-slate-600">
+                  {job.sourceSystem || "미지정"} · 보류 {job.holdRows}건 · 실패 {job.failedRows}건
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyPanel title="예외 없음" text="현재 보류나 실패가 포함된 작업이 없습니다." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RunsPage() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<History className="h-5 w-5" />}
+        title="실행 기록"
+        text="자동화 실행 단계별 로그와 승인 대기 지점을 추적합니다."
+      />
+      <div className="p-4">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {runSteps.map((step, index) => (
+            <div key={step} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <span className="text-xs text-slate-500">STEP {index + 1}</span>
+              <h3 className="mt-1 font-semibold">{step}</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                {index < 4 ? "자동 검증 가능" : index === 5 ? "사용자 승인 필요" : "결과 기록"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReportsPage({ jobs }: { jobs: Job[] }) {
+  const totalRows = jobs.reduce((sum, job) => sum + job.totalRows, 0);
+  const failedRows = jobs.reduce((sum, job) => sum + job.failedRows, 0);
+  const readyRows = jobs.reduce((sum, job) => sum + job.readyRows, 0);
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<Database className="h-5 w-5" />}
+        title="리포트"
+        text="채널별 처리량, 실패율, 실행 대기 현황을 볼 수 있게 구성합니다."
+      />
+      <div className="grid gap-3 p-4 md:grid-cols-3">
+        <OverviewCard label="누적 주문 행" value={totalRows} />
+        <OverviewCard label="검증 완료 행" value={readyRows} />
+        <OverviewCard label="실패 행" value={failedRows} />
+      </div>
+      <div className="border-t border-slate-200 p-4">
+        <EmptyPanel title="다운로드 리포트 영역" text="작업 상세의 리포트 다운로드와 별도로, 기간·채널·실패 사유별 리포트를 이곳에 추가합니다." />
+      </div>
+    </section>
+  );
+}
+
+function SettingsPage() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<Settings className="h-5 w-5" />}
+        title="설정"
+        text="주문 제출 승인 정책, 채널별 위험 단계, 담당자 권한을 관리합니다."
+      />
+      <div className="grid gap-4 p-4 lg:grid-cols-3">
+        <PolicyCard title="승인 정책" text="장바구니 추가, 주문 확정, 결제, ERP 전표 등록은 각각 다른 승인 단계를 둘 수 있습니다." />
+        <PolicyCard title="알림 기준" text="가격 차이, 품절, 주소 오류, 로그인 만료, 중복 주문 감지 시 보류 큐로 보냅니다." />
+        <PolicyCard title="접근 권한" text="업로드, 검증, 실행 승인, 리포트 다운로드 권한을 역할별로 나눕니다." />
+      </div>
+    </section>
+  );
+}
+
+function SectionHeader({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-slate-200 p-4">
+      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-teal-50 text-teal-700">{icon}</span>
+      <div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="text-sm text-slate-600">{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function SideNote({ title, items }: { title: string; items: string[] }) {
+  return (
+    <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm text-slate-600">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-teal-700" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+function EmptyPanel({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+      <h3 className="font-semibold">{title}</h3>
+      <p className="mt-2 text-sm text-slate-600">{text}</p>
+    </div>
+  );
+}
+
 function OrderTable({ rows }: { rows: OrderRow[] }) {
   return (
     <div className="overflow-hidden rounded-md border border-slate-200">
@@ -805,6 +1196,7 @@ function OrderTable({ rows }: { rows: OrderRow[] }) {
           <TableRow>
             <TableHead className="w-16">행</TableHead>
             <TableHead>상태</TableHead>
+            <TableHead>출처</TableHead>
             <TableHead>주문번호</TableHead>
             <TableHead>상품</TableHead>
             <TableHead>수량</TableHead>
@@ -820,6 +1212,7 @@ function OrderTable({ rows }: { rows: OrderRow[] }) {
               <TableCell>
                 <Badge className={statusClass(row.status)}>{statusLabel(row.status)}</Badge>
               </TableCell>
+              <TableCell>{row.sourceSystem || "미지정"}</TableCell>
               <TableCell>{row.orderId || "-"}</TableCell>
               <TableCell className="max-w-[220px] whitespace-normal font-medium">
                 {row.productName || "-"}

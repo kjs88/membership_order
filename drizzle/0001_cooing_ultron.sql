@@ -1,0 +1,1 @@
+ALTER TABLE `order_jobs` ADD `source_system` text DEFAULT '미지정' NOT NULL;

@@ -4,6 +4,7 @@ import { orderJobs, orderRows } from "../../../db/schema";
 
 type IncomingRow = {
   lineNo: number;
+  sourceSystem: string;
   orderId: string;
   category: string;
   productName: string;
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
     };
     const filename = payload.filename?.trim() || "orders.csv";
     const rows = payload.rows ?? [];
+    const sourceSystem = rows.find((row) => row.sourceSystem)?.sourceSystem || "미지정";
 
     if (!Array.isArray(rows) || rows.length === 0) {
       return Response.json({ error: "저장할 주문 행이 없습니다." }, { status: 400 });
@@ -66,6 +68,7 @@ export async function POST(request: Request) {
       .insert(orderJobs)
       .values({
         filename,
+        sourceSystem,
         status,
         totalRows,
         readyRows,

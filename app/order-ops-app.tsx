@@ -15,6 +15,7 @@ import {
   FileWarning,
   FileSpreadsheet,
   History,
+  KeyRound,
   ListChecks,
   Loader2,
   Map,
@@ -22,7 +23,9 @@ import {
   PlayCircle,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Upload,
+  UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +88,7 @@ type PageMode =
   | "exceptions"
   | "runs"
   | "reports"
+  | "membership"
   | "settings";
 
 const requiredColumns = [
@@ -116,6 +120,7 @@ const appSections: {
   { id: "exceptions", label: "예외 처리", description: "실패와 보류 큐", icon: <FileWarning className="h-4 w-4" /> },
   { id: "runs", label: "실행 기록", description: "자동화 실행 로그", icon: <History className="h-4 w-4" /> },
   { id: "reports", label: "리포트", description: "성과와 다운로드", icon: <Database className="h-4 w-4" /> },
+  { id: "membership", label: "회원/로그인", description: "가입과 권한", icon: <UserRound className="h-4 w-4" /> },
   { id: "settings", label: "설정", description: "승인과 권한", icon: <Settings className="h-4 w-4" /> },
 ];
 
@@ -326,6 +331,20 @@ const runSteps = [
   "사용자 승인",
   "주문번호/전표번호 수집",
   "리포트 발행",
+];
+
+const membershipRoles = [
+  { role: "최고 관리자", scope: "전체 채널, 회원 승인, 실행 정책 변경", users: "1명", risk: "모든 변경 감사 기록" },
+  { role: "주문 운영자", scope: "주문 업로드, 검증, 보류 처리", users: "3명", risk: "주문 확정 승인 불가" },
+  { role: "승인 담당자", scope: "주문 확정, ERP 전표 등록 승인", users: "2명", risk: "본인 업로드 건 승인 제한" },
+  { role: "조회 전용", scope: "일정, 실행 기록, 리포트 열람", users: "5명", risk: "다운로드 권한 별도 부여" },
+];
+
+const authRoadmap = [
+  { title: "1단계", text: "현재처럼 사이트는 비공개로 두고, 회원/역할 정책을 먼저 정리합니다." },
+  { title: "2단계", text: "초대 기반 회원가입, 이메일 인증, 관리자 승인 대기 화면을 붙입니다." },
+  { title: "3단계", text: "주문 실행, 리포트 다운로드, 채널 설정 같은 위험 작업을 역할별로 차단합니다." },
+  { title: "4단계", text: "로그인 실패, 세션 만료, 권한 변경, 주문 승인 이력을 감사 로그로 남깁니다." },
 ];
 
 function toDateKey(value: Date | string) {
@@ -610,7 +629,7 @@ export default function OrderOpsApp() {
           <MetricCard icon={<AlertCircle />} label="실패" value={summary.failed} tone="failed" />
         </section>
 
-        <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-9">
+        <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-10">
           {appSections.map((section) => (
             <button
               key={section.id}
@@ -750,6 +769,8 @@ export default function OrderOpsApp() {
           <RunsPage />
         ) : viewMode === "reports" ? (
           <ReportsPage jobs={jobs} />
+        ) : viewMode === "membership" ? (
+          <MembershipPage />
         ) : (
           <SettingsPage />
         )}
@@ -1134,18 +1155,100 @@ function ReportsPage({ jobs }: { jobs: Job[] }) {
   );
 }
 
+function MembershipPage() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <SectionHeader
+        icon={<UserRound className="h-5 w-5" />}
+        title="회원가입과 로그인"
+        text="GPT 로그인 보호와 별도로, 운영 사이트 자체 회원 체계를 준비합니다."
+      />
+      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <PolicyCard title="가입 방식" text="초대 링크 또는 관리자 등록으로 시작하고, 신규 가입은 승인 대기 상태로 둡니다." />
+            <PolicyCard title="로그인 보안" text="이메일 인증, 비밀번호 재설정, 세션 만료, 실패 횟수 제한을 기본 정책으로 둡니다." />
+            <PolicyCard title="작업 감사" text="업로드, 승인, 주문 제출, 권한 변경은 사용자와 시간 기준으로 기록합니다." />
+          </div>
+
+          <div className="overflow-hidden rounded-md border border-slate-200">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>역할</TableHead>
+                  <TableHead>허용 범위</TableHead>
+                  <TableHead>예상 인원</TableHead>
+                  <TableHead>제한</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {membershipRoles.map((item) => (
+                  <TableRow key={item.role}>
+                    <TableCell className="font-medium">{item.role}</TableCell>
+                    <TableCell className="whitespace-normal">{item.scope}</TableCell>
+                    <TableCell>{item.users}</TableCell>
+                    <TableCell className="whitespace-normal text-slate-700">{item.risk}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-teal-700" />
+              <h3 className="font-semibold">주문 실행 권한 기준</h3>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <PolicyCard title="일반 작업" text="파일 업로드, 검증 결과 확인, 보류 사유 수정은 주문 운영자 이상에게 허용합니다." />
+              <PolicyCard title="외부 변경 작업" text="B2B몰 주문 확정, 결제, ERP 전표 등록은 승인 담당자 이상만 처리합니다." />
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-[#fff8e6] p-4">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-amber-700" />
+              <h3 className="font-semibold">현재 상태</h3>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-700">
+              지금 배포된 사이트는 GPT 계정 기반의 비공개 접근으로 보호됩니다. 별도 회원가입은 아직 실제 로그인 서버와 연결되지 않은 설계 단계입니다.
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <h3 className="font-semibold">구현 순서</h3>
+            <div className="mt-3 space-y-2">
+              {authRoadmap.map((item) => (
+                <div key={item.title} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <span className="text-xs font-semibold text-teal-700">{item.title}</span>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <SideNote
+            title="추가로 정할 것"
+            items={["외부 직원 가입 허용 여부", "관리자 승인 담당자", "비밀번호 정책", "휴면 계정 기준", "퇴사자 계정 잠금 방식"]}
+          />
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function SettingsPage() {
   return (
     <section className="rounded-lg border border-slate-200 bg-white">
       <SectionHeader
         icon={<Settings className="h-5 w-5" />}
         title="설정"
-        text="주문 제출 승인 정책, 채널별 위험 단계, 담당자 권한을 관리합니다."
+        text="주문 제출 승인 정책, 채널별 위험 단계, 시스템 기준값을 관리합니다."
       />
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <PolicyCard title="승인 정책" text="장바구니 추가, 주문 확정, 결제, ERP 전표 등록은 각각 다른 승인 단계를 둘 수 있습니다." />
         <PolicyCard title="알림 기준" text="가격 차이, 품절, 주소 오류, 로그인 만료, 중복 주문 감지 시 보류 큐로 보냅니다." />
-        <PolicyCard title="접근 권한" text="업로드, 검증, 실행 승인, 리포트 다운로드 권한을 역할별로 나눕니다." />
+        <PolicyCard title="기준 데이터" text="채널별 상품코드, 거래처 별칭, 가격 허용 범위, 배송 메모 규칙을 관리합니다." />
       </div>
     </section>
   );

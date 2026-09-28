@@ -1,6 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { orderJobs, orderRows } from "../../../db/schema";
+import { orderAuditLogs, orderJobs, orderRows } from "../../../db/schema";
+import { actorText, getRequestActor } from "./actor";
 
 type IncomingRow = {
   lineNo: number;
@@ -45,6 +46,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const actor = getRequestActor(request);
     const payload = (await request.json()) as {
       filename?: string;
       rows?: IncomingRow[];
@@ -74,6 +76,10 @@ export async function POST(request: Request) {
         readyRows,
         holdRows,
         failedRows,
+        createdByName: actor.name,
+        createdByEmail: actor.email,
+        updatedByName: actor.name,
+        updatedByEmail: actor.email,
       })
       .returning();
 
@@ -103,8 +109,29 @@ export async function POST(request: Request) {
       .set({ updatedAt: sql`CURRENT_TIMESTAMP` })
       .where(eq(orderJobs.id, job.id));
 
+    await db.insert(orderAuditLogs).values({
+      jobId: job.id,
+      action: "ORDER_CREATED",
+      actorName: actor.name,
+      actorEmail: actor.email,
+      detail: `${actorText(actor)}님이 ${filename} 주문 ${totalRows}건을 접수했습니다.`,
+    });
+
     return Response.json(
-      { job: { ...job, status, totalRows, readyRows, holdRows, failedRows } },
+      {
+        job: {
+          ...job,
+          status,
+          totalRows,
+          readyRows,
+          holdRows,
+          failedRows,
+          createdByName: actor.name,
+          createdByEmail: actor.email,
+          updatedByName: actor.name,
+          updatedByEmail: actor.email,
+        },
+      },
       { status: 201 },
     );
   } catch (error) {

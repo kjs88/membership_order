@@ -1,6 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
-import { orderJobs, orderRows } from "../../../../db/schema";
+import { orderAuditLogs, orderJobs, orderRows } from "../../../../db/schema";
+import { actorText, getRequestActor } from "../actor";
 
 function parseId(value: string) {
   const id = Number(value);
@@ -26,7 +27,12 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     if (!job) return Response.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
 
     const rows = await db.select().from(orderRows).where(eq(orderRows.jobId, id)).orderBy(orderRows.lineNo);
-    return Response.json({ job: { ...job, rows } });
+    const auditLogs = await db
+      .select()
+      .from(orderAuditLogs)
+      .where(eq(orderAuditLogs.jobId, id))
+      .orderBy(desc(orderAuditLogs.createdAt), desc(orderAuditLogs.id));
+    return Response.json({ job: { ...job, rows, auditLogs } });
   } catch (error) {
     return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
   }
@@ -34,6 +40,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    const actor = getRequestActor(request);
     const params = await context.params;
     const id = parseId(params.id);
     if (!id) return Response.json({ error: "작업 ID가 올바르지 않습니다." }, { status: 400 });
@@ -45,12 +52,28 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
 
     const db = getDb();
+    const [previousJob] = await db.select().from(orderJobs).where(eq(orderJobs.id, id)).limit(1);
+    if (!previousJob) return Response.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
+
     const [job] = await db
       .update(orderJobs)
-      .set({ status, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .set({
+        status,
+        updatedByName: actor.name,
+        updatedByEmail: actor.email,
+        updatedAt: sql`CURRENT_TIMESTAMP`,
+      })
       .where(eq(orderJobs.id, id))
       .returning();
-    if (!job) return Response.json({ error: "작업을 찾을 수 없습니다." }, { status: 404 });
+
+    await db.insert(orderAuditLogs).values({
+      jobId: id,
+      action: "STATUS_CHANGED",
+      actorName: actor.name,
+      actorEmail: actor.email,
+      detail: `${actorText(actor)}님이 상태를 ${previousJob.status}에서 ${status}로 변경했습니다.`,
+    });
+
     return Response.json({ job });
   } catch (error) {
     return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });

@@ -67,8 +67,24 @@ type Job = {
   readyRows: number;
   holdRows: number;
   failedRows: number;
+  createdByName: string;
+  createdByEmail: string;
+  updatedByName: string;
+  updatedByEmail: string;
   createdAt: string;
+  updatedAt: string;
   rows?: OrderRow[];
+  auditLogs?: AuditLog[];
+};
+
+type AuditLog = {
+  id: number;
+  jobId: number;
+  action: string;
+  actorName: string;
+  actorEmail: string;
+  detail: string;
+  createdAt: string;
 };
 
 type CalendarDay = {
@@ -247,6 +263,10 @@ function statusClass(status: string) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function workerLabel(job: Job) {
+  return job.updatedByName || job.createdByName || "로그 없음";
+}
+
 function downloadCsv(rows: OrderRow[], filename: string) {
   const headers = [
     "line_no",
@@ -413,7 +433,7 @@ function OverviewPage({ jobs, onGo }: { jobs: Job[]; onGo: (mode: PageMode) => v
           <FlowCard title="접수" text="CSV·엑셀·ERP 내보내기 파일을 같은 주문 스키마로 정규화합니다." />
           <FlowCard title="검증" text="거래처, 상품, 수량, 주소, 예상가, 채널별 필수값을 먼저 확인합니다." />
           <FlowCard title="실행" text="사이트 자동입력 또는 ERP 전표 생성은 승인 전 대기 상태로 분리합니다." />
-          <FlowCard title="기록" text="주문번호, 전표번호, 실패 사유, 보류 사유를 작업별로 남깁니다." />
+          <FlowCard title="기록" text="작업자, 주문번호, 전표번호, 실패 사유, 보류 사유를 작업별로 남깁니다." />
         </div>
       </div>
 
@@ -693,6 +713,7 @@ export default function OrderOpsApp() {
                     <div className="mt-2 text-xs text-slate-500">
                       {job.sourceSystem || "미지정"} · {job.totalRows}건 · 완료 {job.readyRows} · 실패 {job.failedRows}
                     </div>
+                    <div className="mt-1 text-xs text-slate-500">최근 작업자: {workerLabel(job)}</div>
                   </button>
                 ))
               )}
@@ -739,6 +760,7 @@ export default function OrderOpsApp() {
               <TabsList>
                 <TabsTrigger value="rows">주문 행</TabsTrigger>
                 <TabsTrigger value="policy">실행 정책</TabsTrigger>
+                <TabsTrigger value="audit">작업 로그</TabsTrigger>
               </TabsList>
               <TabsContent value="rows" className="mt-4">
                 {rows.length ? <OrderTable rows={rows} /> : <EmptyState />}
@@ -749,6 +771,9 @@ export default function OrderOpsApp() {
                   <PolicyCard title="승인" text="검증 완료 건만 실행 대기 상태로 넘깁니다. 실패·보류 행은 리포트에 남습니다." />
                   <PolicyCard title="제출" text="이로움 로그인, 장바구니 추가, 주문 확정은 별도 실행 에이전트와 사용자 승인 후 처리합니다." />
                 </div>
+              </TabsContent>
+              <TabsContent value="audit" className="mt-4">
+                <AuditLogPanel job={activeJob} />
               </TabsContent>
             </Tabs>
             </section>
@@ -777,6 +802,100 @@ export default function OrderOpsApp() {
       </div>
     </main>
   );
+}
+
+function AuditLogPanel({ job }: { job: Job | null }) {
+  if (!job) {
+    return (
+      <EmptyPanel
+        title="저장 후 로그가 남습니다"
+        text="주문 파일을 클라우드에 저장하면 접수자, 처리자, 상태 변경 이력이 작업 로그로 기록됩니다."
+      />
+    );
+  }
+
+  const logs = job.auditLogs ?? [];
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <h3 className="font-semibold">작업자 요약</h3>
+        <div className="mt-3 space-y-3 text-sm">
+          <WorkerSummary label="접수자" name={job.createdByName} email={job.createdByEmail} date={job.createdAt} />
+          <WorkerSummary label="최근 작업자" name={job.updatedByName} email={job.updatedByEmail} date={job.updatedAt} />
+        </div>
+      </aside>
+
+      <div className="rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 p-4">
+          <h3 className="font-semibold">주문 작업 로그</h3>
+          <p className="mt-1 text-sm text-slate-600">저장, 상태 변경, 승인, 제출 같은 주문 관련 행동을 시간순으로 남깁니다.</p>
+        </div>
+        <div className="divide-y divide-slate-200">
+          {logs.length ? (
+            logs.map((log) => <AuditLogItem key={log.id} log={log} />)
+          ) : (
+            <p className="p-4 text-sm text-slate-600">아직 기록된 작업 로그가 없습니다.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkerSummary({
+  label,
+  name,
+  email,
+  date,
+}: {
+  label: string;
+  name?: string;
+  email?: string;
+  date?: string;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <span className="text-xs font-semibold text-slate-500">{label}</span>
+      <p className="mt-1 font-medium">{name || "알 수 없음"}</p>
+      {email ? <p className="text-xs text-slate-500">{email}</p> : null}
+      {date ? <p className="mt-2 text-xs text-slate-500">{formatDateTime(date)}</p> : null}
+    </div>
+  );
+}
+
+function AuditLogItem({ log }: { log: AuditLog }) {
+  return (
+    <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="border-slate-200 bg-slate-50 text-slate-700">{auditActionLabel(log.action)}</Badge>
+          <span className="text-sm font-medium">{log.actorName || "알 수 없음"}</span>
+          {log.actorEmail ? <span className="text-xs text-slate-500">{log.actorEmail}</span> : null}
+        </div>
+        <p className="mt-2 text-sm leading-6 text-slate-700">{log.detail}</p>
+      </div>
+      <time className="text-xs text-slate-500">{formatDateTime(log.createdAt)}</time>
+    </div>
+  );
+}
+
+function auditActionLabel(action: string) {
+  if (action === "ORDER_CREATED") return "주문 접수";
+  if (action === "STATUS_CHANGED") return "상태 변경";
+  return action;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function OperationsCalendar({
@@ -966,7 +1085,7 @@ function CalendarRecord({
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{job.filename}</span>
           <span className="mt-1 block text-xs text-slate-500">
-            {time} · {job.sourceSystem || "미지정"} · {job.totalRows}건
+            {time} · {job.sourceSystem || "미지정"} · {job.totalRows}건 · {workerLabel(job)}
             {!compact ? ` · 완료 ${job.readyRows} · 실패 ${job.failedRows}` : ""}
           </span>
         </span>
@@ -1112,7 +1231,7 @@ function RunsPage() {
       <SectionHeader
         icon={<History className="h-5 w-5" />}
         title="실행 기록"
-        text="자동화 실행 단계별 로그와 승인 대기 지점을 추적합니다."
+        text="자동화 실행 단계별 로그, 작업자, 승인 대기 지점을 추적합니다."
       />
       <div className="p-4">
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -1121,7 +1240,7 @@ function RunsPage() {
               <span className="text-xs text-slate-500">STEP {index + 1}</span>
               <h3 className="mt-1 font-semibold">{step}</h3>
               <p className="mt-2 text-sm text-slate-600">
-                {index < 4 ? "자동 검증 가능" : index === 5 ? "사용자 승인 필요" : "결과 기록"}
+                {index < 4 ? "작업자와 자동 검증 기록" : index === 5 ? "사용자 승인 필요" : "결과와 담당자 기록"}
               </p>
             </div>
           ))}
@@ -1168,7 +1287,7 @@ function MembershipPage() {
           <div className="grid gap-3 md:grid-cols-3">
             <PolicyCard title="가입 방식" text="초대 링크 또는 관리자 등록으로 시작하고, 신규 가입은 승인 대기 상태로 둡니다." />
             <PolicyCard title="로그인 보안" text="이메일 인증, 비밀번호 재설정, 세션 만료, 실패 횟수 제한을 기본 정책으로 둡니다." />
-            <PolicyCard title="작업 감사" text="업로드, 승인, 주문 제출, 권한 변경은 사용자와 시간 기준으로 기록합니다." />
+            <PolicyCard title="작업 감사" text="업로드, 상태 변경, 승인, 주문 제출, 권한 변경은 사용자와 시간 기준으로 기록합니다." />
           </div>
 
           <div className="overflow-hidden rounded-md border border-slate-200">

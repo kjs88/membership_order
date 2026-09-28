@@ -10,6 +10,10 @@ export const orderJobs = sqliteTable("order_jobs", {
   readyRows: integer("ready_rows").notNull().default(0),
   holdRows: integer("hold_rows").notNull().default(0),
   failedRows: integer("failed_rows").notNull().default(0),
+  createdByName: text("created_by_name").notNull().default("알 수 없음"),
+  createdByEmail: text("created_by_email").notNull().default(""),
+  updatedByName: text("updated_by_name").notNull().default("알 수 없음"),
+  updatedByEmail: text("updated_by_email").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -34,5 +38,17 @@ export const orderRows = sqliteTable("order_rows", {
   memo: text("memo").notNull().default(""),
   status: text("status").notNull().default("READY"),
   reason: text("reason").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const orderAuditLogs = sqliteTable("order_audit_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id")
+    .notNull()
+    .references(() => orderJobs.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  actorName: text("actor_name").notNull().default("알 수 없음"),
+  actorEmail: text("actor_email").notNull().default(""),
+  detail: text("detail").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

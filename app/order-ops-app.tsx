@@ -141,6 +141,29 @@ const appSections: {
   { id: "settings", label: "관리자 설정", description: "승인과 기준값", icon: <Settings className="h-4 w-4" /> },
 ];
 
+const orderChannelGroups = [
+  {
+    title: "B2B몰 주문",
+    description: "온라인몰 주문 접수",
+    items: ["이로움", "보필", "나눔에이치엔씨"],
+  },
+  {
+    title: "ERP 주문",
+    description: "ERP 전표·주문 처리",
+    items: ["세비앙", "에이엠이", "명성실버케어"],
+  },
+  {
+    title: "메일 주문",
+    description: "메일 주문서 접수",
+    items: ["현대메딕스", "나이스텍", "엠씨텍", "안앤락", "삼주유니콘", "진산메디칼", "코리아케어서프라이", "그레이스케일", "삼원스카이, 건강홈케어"],
+  },
+  {
+    title: "팩스 주문",
+    description: "팩스 주문서 접수",
+    items: ["유광정밀", "미키코리아", "국제케어"],
+  },
+] as const;
+
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_");
 }
@@ -488,6 +511,41 @@ function OverviewPage({ jobs, onGo }: { jobs: Job[]; onGo: (mode: PageMode) => v
   );
 }
 
+function OrderChannelSidebar({ onSelect }: { onSelect: (channel: string) => void }) {
+  return (
+    <aside className="h-fit rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-4">
+      <div className="border-b border-slate-200 px-2 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">주문 채널</p>
+        <h2 className="mt-1 text-lg font-semibold">대메뉴</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">거래처별 주문 접수 화면으로 바로 이동합니다.</p>
+      </div>
+      <div className="mt-3 space-y-4">
+        {orderChannelGroups.map((group) => (
+          <section key={group.title}>
+            <div className="px-2">
+              <h3 className="text-sm font-semibold text-slate-900">{group.title}</h3>
+              <p className="mt-0.5 text-[11px] text-slate-500">{group.description}</p>
+            </div>
+            <div className="mt-1.5 space-y-0.5">
+              {group.items.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-slate-600 transition hover:bg-teal-50 hover:text-[#0f4f49]"
+                  onClick={() => onSelect(item)}
+                >
+                  <span className="mr-2 h-1.5 w-1.5 rounded-full bg-slate-300" />
+                  <span className="truncate">{item}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 function OverviewCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -671,12 +729,20 @@ export default function OrderOpsApp() {
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-4">
-          <MetricCard icon={<FileSpreadsheet />} label="전체 주문" value={summary.total} />
-          <MetricCard icon={<CheckCircle2 />} label="검증 완료" value={summary.ready} tone="ready" />
-          <MetricCard icon={<PauseCircle />} label="확인 필요" value={summary.hold} tone="hold" />
-          <MetricCard icon={<AlertCircle />} label="실패" value={summary.failed} tone="failed" />
-        </section>
+        <div className="grid items-start gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
+          <OrderChannelSidebar
+            onSelect={(channel) => {
+              setViewMode("orders");
+              setMessage(`${channel} 주문 접수 화면을 선택했습니다. CSV 업로드 또는 주문서 입력을 시작하세요.`);
+            }}
+          />
+          <div className="min-w-0 space-y-5">
+            <section className="grid gap-3 md:grid-cols-4">
+              <MetricCard icon={<FileSpreadsheet />} label="전체 주문" value={summary.total} />
+              <MetricCard icon={<CheckCircle2 />} label="검증 완료" value={summary.ready} tone="ready" />
+              <MetricCard icon={<PauseCircle />} label="확인 필요" value={summary.hold} tone="hold" />
+              <MetricCard icon={<AlertCircle />} label="실패" value={summary.failed} tone="failed" />
+            </section>
 
         <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-10">
           {appSections.map((section) => (
@@ -827,7 +893,9 @@ export default function OrderOpsApp() {
           <MembershipPage />
         ) : (
           <SettingsPage />
-        )}
+            )}
+          </div>
+        </div>
       </div>
     </main>
   );

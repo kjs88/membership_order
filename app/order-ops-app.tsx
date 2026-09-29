@@ -744,7 +744,7 @@ export default function OrderOpsApp() {
               <MetricCard icon={<AlertCircle />} label="실패" value={summary.failed} tone="failed" />
             </section>
 
-        <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-10">
+        <nav className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-3 xl:grid-cols-5">
           {appSections.map((section) => (
             <button
               key={section.id}

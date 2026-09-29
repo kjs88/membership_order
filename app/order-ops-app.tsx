@@ -38,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createOrderJob, getOrderJob, listOrderJobs, updateOrderJob } from "@/lib/firebase-order-ops";
 
 type OrderRow = {
   lineNo: number;
@@ -59,7 +60,7 @@ type OrderRow = {
 };
 
 type Job = {
-  id: number;
+  id: string;
   filename: string;
   sourceSystem: string;
   status: string;
@@ -78,8 +79,8 @@ type Job = {
 };
 
 type AuditLog = {
-  id: number;
-  jobId: number;
+  id: string;
+  jobId: string;
   action: string;
   actorName: string;
   actorEmail: string;
@@ -538,26 +539,23 @@ export default function OrderOpsApp() {
   );
   const summary = viewMode === "orders" ? orderSummary : globalSummary;
 
-  async function openJob(id: number) {
-    const response = await fetch(`/api/jobs/${id}`);
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || "작업을 불러오지 못했습니다.");
+  async function openJob(id: string) {
+    const data = await getOrderJob(id);
+    if (!data) {
+      setMessage("작업을 불러오지 못했습니다.");
       return;
     }
-    setActiveJob(data.job);
+    setActiveJob(data as Job);
     setPreviewRows([]);
-    setFilename(data.job.filename);
+    setFilename(data.filename);
   }
 
   async function loadJobs() {
     setLoading(true);
     try {
-      const response = await fetch("/api/jobs");
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "작업 목록을 불러오지 못했습니다.");
-      setJobs(data.jobs);
-      if (!activeJob && data.jobs[0]) await openJob(data.jobs[0].id);
+      const data = await listOrderJobs();
+      setJobs(data as Job[]);
+      if (!activeJob && data[0]) await openJob(String(data[0].id));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "작업 목록 오류");
     } finally {
@@ -583,17 +581,31 @@ export default function OrderOpsApp() {
     if (!previewRows.length || !filename) return;
     setLoading(true);
     try {
-      const response = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename, rows: previewRows }),
+      const now = new Date().toISOString();
+      const readyRows = previewRows.filter((row) => row.status === "READY").length;
+      const holdRows = previewRows.filter((row) => row.status === "HOLD").length;
+      const failedRows = previewRows.filter((row) => row.status === "FAILED").length;
+      const job = await createOrderJob({
+        filename,
+        sourceSystem: previewRows[0]?.sourceSystem || "미지정",
+        status: failedRows ? "FAILED" : holdRows ? "HOLD" : "READY",
+        totalRows: previewRows.length,
+        readyRows,
+        holdRows,
+        failedRows,
+        createdByName: "주문 운영자",
+        createdByEmail: "",
+        updatedByName: "주문 운영자",
+        updatedByEmail: "",
+        createdAt: now,
+        updatedAt: now,
+        rows: previewRows,
+        auditLogs: [{ id: `${Date.now()}-created`, jobId: "", action: "ORDER_CREATED", actorName: "주문 운영자", actorEmail: "", detail: `${filename} 주문 ${previewRows.length}건 접수`, createdAt: now }],
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "저장하지 못했습니다.");
       setMessage("클라우드 작업으로 저장했습니다.");
       setPreviewRows([]);
       await loadJobs();
-      await openJob(data.job.id);
+      await openJob(String(job.id));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "저장 오류");
     } finally {
@@ -605,13 +617,7 @@ export default function OrderOpsApp() {
     if (!activeJob) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/jobs/${activeJob.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "QUEUED" }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "실행 대기 전환 실패");
+      await updateOrderJob(activeJob.id, { status: "QUEUED", updatedAt: new Date().toISOString() });
       setMessage("주문 실행 대기 상태로 바꿨습니다. 실행 에이전트 연결 후 처리됩니다.");
       await loadJobs();
       await openJob(activeJob.id);
@@ -934,7 +940,7 @@ function OperationsCalendar({
   selectedDateKey: string;
   onMonthChange: (date: Date) => void;
   onSelectedDateChange: (dateKey: string) => void;
-  onOpenJob: (id: number) => void;
+  onOpenJob: (id: string) => void;
 }) {
   const days = useMemo(() => buildCalendarDays(monthDate, jobs), [jobs, monthDate]);
   const monthLabel = new Intl.DateTimeFormat("ko-KR", {
@@ -1089,7 +1095,7 @@ function CalendarRecord({
   compact = false,
 }: {
   job: Job;
-  onOpenJob: (id: number) => void;
+  onOpenJob: (id: string) => void;
   compact?: boolean;
 }) {
   const time = new Intl.DateTimeFormat("ko-KR", {
@@ -1211,7 +1217,7 @@ function MappingPage() {
   );
 }
 
-function ExceptionsPage({ jobs, onOpenJob }: { jobs: Job[]; onOpenJob: (id: number) => void }) {
+function ExceptionsPage({ jobs, onOpenJob }: { jobs: Job[]; onOpenJob: (id: string) => void }) {
   const exceptions = jobs.filter((job) => job.status === "FAILED" || job.status === "HOLD" || job.failedRows > 0 || job.holdRows > 0);
 
   return (

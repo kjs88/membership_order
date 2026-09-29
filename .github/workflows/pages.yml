@@ -29,6 +29,21 @@ jobs:
         run: npm ci
       - name: Build static site
         run: npm run build
+      - name: Make project-site asset URLs relative
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path("dist/client")
+          for path in root.rglob("*"):
+              if path.suffix not in {".html", ".js", ".rsc"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              text = text.replace('"/_next/', '"./_next/').replace("'/_next/", "'./_next/")
+              text = text.replace('href="/favicon.svg"', 'href="./favicon.svg"')
+              text = text.replace('src="/favicon.svg"', 'src="./favicon.svg"')
+              path.write_text(text, encoding="utf-8")
+          PY
       - name: Add Pages marker
         run: touch dist/client/.nojekyll
       - name: Upload Pages artifact

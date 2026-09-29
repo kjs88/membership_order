@@ -164,6 +164,12 @@ const orderChannelGroups = [
   },
 ] as const;
 
+// External execution targets are intentionally explicit. Credentials are never
+// stored in the dashboard; the operator completes login in the newly opened tab.
+const orderChannelLinks: Record<string, string> = {
+  이로움: "https://eroumcare.com/shop/list.php?ca_id=10",
+};
+
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_");
 }
@@ -536,6 +542,7 @@ function OrderChannelSidebar({ onSelect }: { onSelect: (channel: string) => void
                 >
                   <span className="mr-2 h-1.5 w-1.5 rounded-full bg-slate-300" />
                   <span className="truncate">{item}</span>
+                  {orderChannelLinks[item] ? <span className="ml-auto text-[10px] text-[#0f766e]">새 탭</span> : null}
                 </button>
               ))}
             </div>
@@ -575,6 +582,7 @@ export default function OrderOpsApp() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => toDateKey(new Date()));
   const [viewMode, setViewMode] = useState<PageMode>("overview");
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
 
   const rows = activeJob?.rows ?? previewRows;
   const orderSummary = useMemo(
@@ -686,6 +694,23 @@ export default function OrderOpsApp() {
     }
   }
 
+  function openChannelTab(channel: string) {
+    const url = orderChannelLinks[channel];
+    if (!url) {
+      setMessage(`${channel} 연결 주소는 아직 등록되지 않았습니다. 채널 설정에서 주소를 등록하면 새 탭으로 열 수 있습니다.`);
+      return;
+    }
+
+    // This is a user-initiated click, so browsers allow the new tab without
+    // popup exceptions. The dashboard remains open for status and reporting.
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened) {
+      setMessage(`${channel} 작업 탭을 열었습니다. 로그인과 주문서 입력은 새 탭에서 진행하세요. 최종 주문 확정은 별도 승인 전까지 실행하지 않습니다.`);
+    } else {
+      setMessage("새 탭을 열지 못했습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도하세요.");
+    }
+  }
+
   useEffect(() => {
     void loadJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -732,8 +757,13 @@ export default function OrderOpsApp() {
         <div className="grid items-start gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
           <OrderChannelSidebar
             onSelect={(channel) => {
+              setSelectedChannel(channel);
               setViewMode("orders");
-              setMessage(`${channel} 주문 접수 화면을 선택했습니다. CSV 업로드 또는 주문서 입력을 시작하세요.`);
+              if (orderChannelLinks[channel]) {
+                openChannelTab(channel);
+              } else {
+                setMessage(`${channel} 주문 접수 화면을 선택했습니다. CSV 업로드 또는 주문서 입력을 시작하세요.`);
+              }
             }}
           />
           <div className="min-w-0 space-y-5">
@@ -831,6 +861,12 @@ export default function OrderOpsApp() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                {selectedChannel && orderChannelLinks[selectedChannel] ? (
+                  <Button variant="outline" onClick={() => openChannelTab(selectedChannel)}>
+                    <PlayCircle className="h-4 w-4" />
+                    {selectedChannel} 작업 탭 열기
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={() => downloadCsv(rows, currentTitle)} disabled={!rows.length}>
                   <Download className="h-4 w-4" />
                   리포트 다운로드

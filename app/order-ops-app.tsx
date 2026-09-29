@@ -522,7 +522,6 @@ function OrderChannelSidebar({ onSelect }: { onSelect: (channel: string) => void
     <aside className="h-fit rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-4">
       <div className="border-b border-slate-200 px-2 pb-3">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">주문 채널</p>
-        <h2 className="mt-1 text-lg font-semibold">대메뉴</h2>
         <p className="mt-1 text-xs leading-5 text-slate-500">거래처별 주문 접수 화면으로 바로 이동합니다.</p>
       </div>
       <div className="mt-3 space-y-4">

@@ -18,7 +18,7 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
-  Map,
+  Map as MapIcon,
   PauseCircle,
   PlayCircle,
   RefreshCw,
@@ -133,7 +133,7 @@ const appSections: {
   { id: "orders", label: "주문 접수", description: "파일 업로드와 검증", icon: <ListChecks className="h-4 w-4" /> },
   { id: "calendar", label: "전체 일정", description: "일정과 기록", icon: <CalendarDays className="h-4 w-4" /> },
   { id: "channels", label: "채널/ERP", description: "사이트와 ERP 연결", icon: <Building2 className="h-4 w-4" /> },
-  { id: "mapping", label: "상품 매핑", description: "상품명과 코드 정리", icon: <Map className="h-4 w-4" /> },
+  { id: "mapping", label: "상품 매핑", description: "상품명과 코드 정리", icon: <MapIcon className="h-4 w-4" /> },
   { id: "exceptions", label: "예외 처리", description: "실패와 보류 큐", icon: <FileWarning className="h-4 w-4" /> },
   { id: "runs", label: "실행 기록", description: "자동화 실행 로그", icon: <History className="h-4 w-4" /> },
   { id: "reports", label: "리포트", description: "성과와 다운로드", icon: <Database className="h-4 w-4" /> },
@@ -1177,7 +1177,7 @@ function MappingPage() {
   return (
     <section className="rounded-lg border border-slate-200 bg-white">
       <SectionHeader
-        icon={<Map className="h-5 w-5" />}
+        icon={<MapIcon className="h-5 w-5" />}
         title="상품·거래처 매핑"
         text="사이트마다 다른 상품명, ERP 품목코드, 거래처명을 내부 기준으로 맞춥니다."
       />

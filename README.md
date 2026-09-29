@@ -1,4 +1,13 @@
-# vinext-starter
+# 주문관리 통합 자동화
+
+이 프로젝트는 기존 ChatGPT Sites 주소와 분리된 GitHub Pages 배포를 사용합니다.
+
+- 저장소: https://github.com/kjs88/membership_order
+- 배포 주소: https://kjs88.github.io/membership_order/
+- 배포: GitHub Actions → GitHub Pages
+- 데이터: Firebase Realtime Database의 `order-ops` 경로
+
+GitHub Pages는 정적 프런트엔드만 제공하므로, 주문 저장·리포트 API는 Firebase 연동으로 처리합니다.
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 

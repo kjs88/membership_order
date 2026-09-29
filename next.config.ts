@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: "export",
+  basePath: process.env.GITHUB_ACTIONS ? "/membership_order" : "",
+  assetPrefix: process.env.GITHUB_ACTIONS ? "/membership_order/" : undefined,
+  images: { unoptimized: true },
 };
 
 export default nextConfig;

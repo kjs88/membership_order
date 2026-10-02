@@ -191,12 +191,6 @@ const orderChannelGroups = [
   },
 ] as const;
 
-// External execution targets are intentionally explicit. Credentials are never
-// stored in the dashboard; the operator completes login in the newly opened tab.
-const orderChannelLinks: Record<string, string> = {
-  이로움: "https://eroumcare.com/shop/list.php?ca_id=10",
-};
-
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_");
 }
@@ -555,7 +549,7 @@ function OrderChannelSidebar({ onSelect }: { onSelect: (channel: string) => void
     <aside className="h-fit rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-4">
       <div className="border-b border-slate-200 px-2 pb-3">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0f766e]">주문 채널</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">거래처별 주문 접수 화면으로 바로 이동합니다.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">거래처를 선택해 이 페이지에서 주문을 접수합니다.</p>
       </div>
       <div className="mt-3 space-y-4">
         {orderChannelGroups.map((group) => (
@@ -574,7 +568,6 @@ function OrderChannelSidebar({ onSelect }: { onSelect: (channel: string) => void
                 >
                   <span className="mr-2 h-1.5 w-1.5 rounded-full bg-slate-300" />
                   <span className="truncate">{item}</span>
-                  {orderChannelLinks[item] ? <span className="ml-auto text-[10px] text-[#0f766e]">새 탭</span> : null}
                 </button>
               ))}
             </div>
@@ -760,23 +753,6 @@ export default function OrderOpsApp() {
     }
   }
 
-  function openChannelTab(channel: string) {
-    const url = orderChannelLinks[channel];
-    if (!url) {
-      setMessage(`${channel} 연결 주소는 아직 등록되지 않았습니다. 채널 설정에서 주소를 등록하면 새 탭으로 열 수 있습니다.`);
-      return;
-    }
-
-    // This is a user-initiated click, so browsers allow the new tab without
-    // popup exceptions. The dashboard remains open for status and reporting.
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (opened) {
-      setMessage(`${channel} 작업 탭을 열었습니다. 로그인과 주문서 입력은 새 탭에서 진행하세요. 최종 주문 확정은 별도 승인 전까지 실행하지 않습니다.`);
-    } else {
-      setMessage("새 탭을 열지 못했습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도하세요.");
-    }
-  }
-
   useEffect(() => {
     void loadJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -831,11 +807,7 @@ export default function OrderOpsApp() {
             onSelect={(channel) => {
               setSelectedChannel(channel);
               setViewMode("orders");
-              if (orderChannelLinks[channel]) {
-                openChannelTab(channel);
-              } else {
-                setMessage(`${channel} 주문 접수 화면을 선택했습니다. CSV 업로드 또는 주문서 입력을 시작하세요.`);
-              }
+              setMessage(`${channel}을 선택했습니다. 주문 준비 요청과 결과 확인은 이 페이지에서 진행합니다.`);
             }}
           />
           <div className="min-w-0 space-y-5">
@@ -921,7 +893,7 @@ export default function OrderOpsApp() {
             <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold">{currentTitle}</h2>
+                  <h2 className="text-lg font-semibold">{selectedChannel ? `${selectedChannel} · ${currentTitle}` : currentTitle}</h2>
                   {activeJob ? (
                     <Badge className={statusClass(activeJob.status)}>{statusLabel(activeJob.status)}</Badge>
                   ) : previewRows.length ? (
@@ -933,12 +905,6 @@ export default function OrderOpsApp() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {selectedChannel && orderChannelLinks[selectedChannel] ? (
-                  <Button variant="outline" onClick={() => openChannelTab(selectedChannel)}>
-                    <PlayCircle className="h-4 w-4" />
-                    {selectedChannel} 작업 탭 열기
-                  </Button>
-                ) : null}
                 <Button variant="outline" onClick={() => downloadCsv(rows, currentTitle)} disabled={!rows.length}>
                   <Download className="h-4 w-4" />
                   리포트 다운로드
@@ -951,7 +917,7 @@ export default function OrderOpsApp() {
                 ) : (
                   <Button onClick={() => void queueExecution()} disabled={!activeJob || activeJob.status === "QUEUED" || loading}>
                     <PlayCircle className="h-4 w-4" />
-                    실행 대기 등록
+                    서버 준비 요청
                   </Button>
                 )}
               </div>

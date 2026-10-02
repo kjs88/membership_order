@@ -1,0 +1,58 @@
+name: Membership order background worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: membership-order-worker
+  cancel-in-progress: false
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.55.0-noble
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check worker secrets
+        id: secrets
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          EROUM_STORAGE_STATE_JSON: ${{ secrets.EROUM_STORAGE_STATE_JSON }}
+        shell: bash
+        run: |
+          if [[ -z "$FIREBASE_DATABASE_URL" || -z "$FIREBASE_SERVICE_ACCOUNT_JSON" || -z "$EROUM_STORAGE_STATE_JSON" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Worker secrets are not configured; skipping this run."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install worker dependencies
+        if: steps.secrets.outputs.enabled == 'true'
+        working-directory: worker/order-runner
+        run: npm install
+      - name: Build worker
+        if: steps.secrets.outputs.enabled == 'true'
+        working-directory: worker/order-runner
+        run: npm run build
+      - name: Process queued orders
+        if: steps.secrets.outputs.enabled == 'true'
+        working-directory: worker/order-runner
+        env:
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          EROUM_STORAGE_STATE_JSON: ${{ secrets.EROUM_STORAGE_STATE_JSON }}
+          FIREBASE_QUEUE_PATH: order-ops/jobs
+          WORKER_ID: github-actions-order-worker
+        run: npm start

@@ -10,22 +10,21 @@ GitHub Pages stores jobs in Firebase Realtime Database. A Cloud Run Job polls `o
 - Validates that a server-side Eroum browser session is present and active.
 - Product mapping, cart creation, delivery address entry, and final submission adapters are not wired yet. Unconfigured rows are reported as `HOLD` for the dashboard.
 
-## Cloud deployment
+## GitHub Actions worker
 
-Deploy this directory as a Cloud Run Job and invoke it from Cloud Scheduler once per minute. Give the Cloud Run service account Firebase Realtime Database access using Application Default Credentials. Store `EROUM_STORAGE_STATE_JSON` in Secret Manager and inject it as an environment variable. Never put login state or passwords in GitHub source or the dashboard.
+The repository workflow `.github/workflows/order-worker.yml` runs every five minutes and can also be started manually. It checks Firebase for dashboard jobs in `QUEUED` status and returns a report to the same job. The user's PC and browser are not involved.
 
-Required environment variables:
+Configure these GitHub Actions secrets before enabling the worker:
 
-- `FIREBASE_DATABASE_URL`
-- `FIREBASE_QUEUE_PATH` (defaults to `order-ops/jobs`)
-- `WORKER_ID` (optional)
-- `EROUM_STORAGE_STATE_JSON` (Secret Manager injection)
+- `FIREBASE_DATABASE_URL`: the project's Realtime Database URL.
+- `FIREBASE_SERVICE_ACCOUNT_JSON`: a Firebase service account JSON with Realtime Database access.
+- `EROUM_STORAGE_STATE_JSON`: Playwright storage state for the authorized Eroum account. Never commit it or put it in the dashboard.
 
-Suggested state flow: `QUEUED → RUNNING → AWAITING_REVIEW → SUBMIT_QUEUED → COMPLETED`. Failures and unresolved fields remain `HOLD` or `FAILED`. The dashboard records the review decision and separate final submission approval; any future submit adapter must verify that approval.
+`FIREBASE_QUEUE_PATH` defaults to `order-ops/jobs`; `WORKER_ID` is optional. Suggested state flow: `QUEUED → RUNNING → AWAITING_REVIEW → SUBMIT_QUEUED → COMPLETED`. Failures and unresolved fields remain `HOLD` or `FAILED`. The dashboard records review and any future final approval. A future submit adapter must verify explicit dashboard approval before it can submit.
 
 ## Build
 
-Use Node.js 22 or Docker. Cloud Run uses Application Default Credentials; no service account key file is baked into the image.
+Use Node.js 22 locally. The scheduled GitHub Actions runner uses the Playwright container image so Chromium is available. The Firebase service account JSON is read from the process environment and is never written into the repository.
 
 ```sh
 npm install

@@ -1,4 +1,4 @@
-import { applicationDefault, initializeApp } from "firebase-admin/app";
+import { cert, initializeApp } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
 import { chromium, type Browser } from "playwright";
 import { randomUUID } from "node:crypto";
@@ -19,7 +19,9 @@ type WorkerReport = {
 
 const databaseUrl = process.env.FIREBASE_DATABASE_URL;
 if (!databaseUrl) throw new Error("FIREBASE_DATABASE_URL 환경변수가 필요합니다.");
-initializeApp({ credential: applicationDefault(), databaseURL: databaseUrl });
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+if (!serviceAccountJson) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON 환경변수가 필요합니다.");
+initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), databaseURL: databaseUrl });
 const database = getDatabase();
 const queuePath = process.env.FIREBASE_QUEUE_PATH || "order-ops/jobs";
 const workerId = process.env.WORKER_ID || `web-worker-${randomUUID()}`;
